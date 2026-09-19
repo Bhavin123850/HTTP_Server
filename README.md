@@ -1,72 +1,241 @@
-# HTTP Server with Load Balancer
+# HTTP Server Project
 
-A simple project built in C++ that shows how a **load balancer** distributes
-traffic across multiple **backend servers**, with data stored in
-**PostgreSQL**.
+A C++ HTTP server project with a load balancer, three backend servers, and a
+PostgreSQL database.
 
-## What this project does
+**Features:**
 
-- 3 backend servers run at the same time, each handling HTTP requests for
-  `customers`, `products`, and `orders`.
-- 1 load balancer sits in front of them. It receives every request first,
-  then forwards it to whichever server is least busy.
-- If a server goes down, the load balancer notices (via health checks) and
-  stops sending it traffic until it recovers.
-- Each server talks to a PostgreSQL database and uses caching to respond
-  faster.
+- 3 backend HTTP servers + 1 load balancer
+- PostgreSQL database access
+- Thread pool
+- Connection pool
+- LRU cache
+- Table cache
+- Trie router
+- TCP socket communication
+- Backend health checking
 
-## How it works (simple flow)
+---
 
+## Project Structure
+
+```text
+HttpServerProject/
+│
+├── Server/
+│   ├── include/
+│   │   ├── Common.h
+│   │   ├── Config.h
+│   │   ├── ConnectionPool.h
+│   │   ├── DataStore.h
+│   │   ├── HTTPRequest.h
+│   │   ├── HTTPServer.h
+│   │   ├── LRUCache.h
+│   │   ├── TableCache.h
+│   │   ├── ThreadPool.h
+│   │   └── TrieRouter.h
+│   │
+│   └── src/
+│       ├── DataStore_Customers.cpp
+│       ├── DataStore_Orders.cpp
+│       ├── DataStore_Products.cpp
+│       ├── HTTPServer.cpp
+│       ├── HTTPServer_Customers.cpp
+│       ├── HTTPServer_Orders.cpp
+│       └── HTTPServer_Products.cpp
+│
+├── Server1/
+│   └── main.cpp
+│
+├── Server2/
+│   └── main.cpp
+│
+├── Server3/
+│   └── main.cpp
+│
+├── LoadBalancer/
+│   ├── include/
+│   │   ├── BackendServer.h
+│   │   ├── Common.h
+│   │   └── LoadBalancer.h
+│   │
+│   ├── src/
+│   │   ├── LoadBalancer.cpp
+│   │   ├── LoadBalancer_Init.cpp
+│   │   └── LoadBalancer_Relay.cpp
+│   │
+│   └── main/
+│       └── main.cpp
+│
+└── README.md
 ```
-You / Client
-     |
-     v
-Load Balancer (port 7000)
-     |
-     +--> Server 1 (port 8080)
-     +--> Server 2 (port 8000)   --->  PostgreSQL Database
-     +--> Server 3 (port 9000)
+
+---
+
+## Architecture
+
+```text
+                    Client
+                       |
+                  Port 7000
+                       |
+                 Load Balancer
+                 /      |      \
+                /       |       \
+               ↓        ↓        ↓
+        Server 1    Server 2    Server 3
+        Port 8080   Port 8000   Port 9000
+               \        |        /
+                \       |       /
+                 PostgreSQL
+                   Port 5432
 ```
 
-The load balancer picks whichever server has the fewest active connections,
-so traffic is spread out evenly.
+## Ports
 
-## Project folders
+| Component      | Port |
+|-----------------|------|
+| Load Balancer   | 7000 |
+| Server 1        | 8080 |
+| Server 2        | 8000 |
+| Server 3        | 9000 |
+| PostgreSQL      | 5432 |
 
-- **LoadBalancer/** — the load balancer code
-- **Server/** — the shared code used by all 3 servers (routes, database
-  access, caching)
-- **Server1/**, **Server2/**, **Server3/** — each just starts a server on a
-  different port using the shared code above
+---
 
-## What you need to run it
+## Requirements
 
-- Windows + Visual Studio
-- PostgreSQL installed
-- Two libraries installed via vcpkg: `libpqxx` and `nlohmann-json`
+Install the following:
 
-## How to run it
+- MSYS2 UCRT64
+- GCC / G++
+- PostgreSQL
+- libpqxx
+- nlohmann/json
 
-1. Create a PostgreSQL database and update the username/password in
-   `Server/include/Config.h`.
-2. Build 4 projects in Visual Studio: `LoadBalancer`, `Server1`, `Server2`,
-   `Server3`.
-3. Start the servers first:
-   ```
-   Server1.exe
-   Server2.exe
-   Server3.exe
-   ```
-4. Then start the load balancer:
-   ```
-   LoadBalancer.exe
-   ```
-5. Send requests to the load balancer, not the servers directly:
-   ```
-   http://127.0.0.1:7000/customers
-   http://127.0.0.1:7000/products
-   http://127.0.0.1:7000/orders
-   ```
+The project uses C++, Winsock, libpqxx, PostgreSQL, and nlohmann/json.
 
-That's it — the load balancer will route each request to one of the 3
-servers automatically.
+## Database
+
+The servers connect to PostgreSQL using:
+
+```text
+Host:     127.0.0.1
+Port:     5432
+Database: HttpServerDB
+User:     postgres
+```
+
+Make sure PostgreSQL is running, and that the `HttpServerDB` database exists
+with the required tables, before starting the servers.
+
+---
+
+## Build and Run
+
+Open **4 separate MSYS2 UCRT64 terminals** — one per component.
+
+### Terminal 1 — Server 1
+
+```bash
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\Server"
+
+g++ -Iinclude src/DataStore_Customers.cpp src/DataStore_Products.cpp src/DataStore_Orders.cpp src/HTTPServer.cpp src/HTTPServer_Customers.cpp src/HTTPServer_Products.cpp src/HTTPServer_Orders.cpp ../Server1/main.cpp -lpqxx -lpq -lws2_32 -o Server1.exe
+
+./Server1.exe
+```
+
+Runs on `http://127.0.0.1:8080`
+
+### Terminal 2 — Server 2
+
+```bash
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\Server"
+
+g++ -Iinclude src/DataStore_Customers.cpp src/DataStore_Products.cpp src/DataStore_Orders.cpp src/HTTPServer.cpp src/HTTPServer_Customers.cpp src/HTTPServer_Products.cpp src/HTTPServer_Orders.cpp ../Server2/main.cpp -lpqxx -lpq -lws2_32 -o Server2.exe
+
+./Server2.exe
+```
+
+Runs on `http://127.0.0.1:8000`
+
+### Terminal 3 — Server 3
+
+```bash
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\Server"
+
+g++ -Iinclude src/DataStore_Customers.cpp src/DataStore_Products.cpp src/DataStore_Orders.cpp src/HTTPServer.cpp src/HTTPServer_Customers.cpp src/HTTPServer_Products.cpp src/HTTPServer_Orders.cpp ../Server3/main.cpp -lpqxx -lpq -lws2_32 -o Server3.exe
+
+./Server3.exe
+```
+
+Runs on `http://127.0.0.1:9000`
+
+### Terminal 4 — Load Balancer
+
+```bash
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\LoadBalancer"
+
+g++ -Iinclude src/LoadBalancer.cpp src/LoadBalancer_Init.cpp src/LoadBalancer_Relay.cpp main/main.cpp -lws2_32 -o LoadBalancer.exe
+
+./LoadBalancer.exe
+```
+
+Runs on `http://127.0.0.1:7000`
+
+---
+
+## Start Order
+
+Always start components in this order:
+
+1. PostgreSQL
+2. Server 1
+3. Server 2
+4. Server 3
+5. Load Balancer
+
+The load balancer health-checks the backend servers, so all three servers
+must already be running before you start it.
+
+---
+
+## How the Load Balancer Works
+
+The load balancer listens on port `7000`. When a client sends a request:
+
+```text
+Client
+   |
+   ↓
+Load Balancer :7000
+   |
+   ├── Server 1 :8080
+   ├── Server 2 :8000
+   └── Server 3 :9000
+```
+
+It checks the health of each backend server, picks an available one, and
+forwards the request there using a pool of worker threads.
+
+---
+
+## Server Features
+
+**HTTP Server** — provides endpoints for Customers, Products, and Orders.
+All three servers run the same code; only the port differs (8080 / 8000 / 9000).
+
+**Thread Pool** — handles multiple client requests concurrently.
+
+**Connection Pool** — reuses a fixed set of database connections instead of
+opening a new one per request.
+
+**LRU Cache** — caches frequently requested individual records.
+
+**Table Cache** — caches whole-table results to reduce database queries.
+
+**Trie Router** — matches incoming HTTP routes using a Trie structure.
+
+**Load Balancer** — accepts client connections, checks backend health,
+selects a backend server, forwards requests, relays responses, and uses
+worker threads to handle everything concurrently.

@@ -138,7 +138,7 @@ Open **4 separate MSYS2 UCRT64 terminals** — one per component.
 ### Terminal 1 — Server 1
 
 ```bash
-cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\Server"
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\HTTP_Server\Server"
 
 g++ -Iinclude src/DataStore_Customers.cpp src/DataStore_Products.cpp src/DataStore_Orders.cpp src/HTTPServer.cpp src/HTTPServer_Customers.cpp src/HTTPServer_Products.cpp src/HTTPServer_Orders.cpp ../Server1/main.cpp -lpqxx -lpq -lws2_32 -o Server1.exe
 
@@ -150,7 +150,7 @@ Runs on `http://127.0.0.1:8080`
 ### Terminal 2 — Server 2
 
 ```bash
-cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\Server"
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\HTTP_Server\Server"
 
 g++ -Iinclude src/DataStore_Customers.cpp src/DataStore_Products.cpp src/DataStore_Orders.cpp src/HTTPServer.cpp src/HTTPServer_Customers.cpp src/HTTPServer_Products.cpp src/HTTPServer_Orders.cpp ../Server2/main.cpp -lpqxx -lpq -lws2_32 -o Server2.exe
 
@@ -162,7 +162,7 @@ Runs on `http://127.0.0.1:8000`
 ### Terminal 3 — Server 3
 
 ```bash
-cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\Server"
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\HTTP_Server\Server"
 
 g++ -Iinclude src/DataStore_Customers.cpp src/DataStore_Products.cpp src/DataStore_Orders.cpp src/HTTPServer.cpp src/HTTPServer_Customers.cpp src/HTTPServer_Products.cpp src/HTTPServer_Orders.cpp ../Server3/main.cpp -lpqxx -lpq -lws2_32 -o Server3.exe
 
@@ -174,7 +174,7 @@ Runs on `http://127.0.0.1:9000`
 ### Terminal 4 — Load Balancer
 
 ```bash
-cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\LoadBalancer"
+cd "C:\Users\ASUS\Downloads\HttpServerProject\HttpServerProject\HTTP_Server\LoadBalancer"
 
 g++ -Iinclude src/LoadBalancer.cpp src/LoadBalancer_Init.cpp src/LoadBalancer_Relay.cpp main/main.cpp -lws2_32 -o LoadBalancer.exe
 

@@ -1,102 +1,188 @@
-# HTTP Server Project — Split Into Smaller Files
+# HTTP Server + Load Balancer (C++ / Windows / PostgreSQL)
 
-Your original 4 files (~250 KB total) have been broken down into small,
-single-responsibility files, grouped by folder. No logic was changed —
-only reorganized. Every class keeps its original code; class *declarations*
-now live in `.h` files and method *bodies* live in `.cpp` files.
+A multi-threaded HTTP server cluster written in C++ for Windows, fronted by a
+custom TCP load balancer. Three identical backend server instances handle
+`customers`, `products`, and `orders` resources backed by PostgreSQL, with
+in-memory caching and a Trie-based router. The load balancer distributes
+incoming connections across the healthiest backend using a least-connections
+strategy, with automatic health checks and failover.
 
-## Why this structure
+## Features
 
-`server1.cpp`, `server2.cpp`, and `server3.cpp` were **identical** except
-for one number (the port: 8080 / 8000 / 9000). So instead of 3 giant
-copies of the same 3,700-line file, there is now:
+- **Custom TCP load balancer**
+  - Least-connections routing across backend servers
+  - Background health checker with automatic failover
+  - Worker-thread pool (no thread-per-connection)
+  - Raw socket relay between client and backend
+- **HTTP server (x3 instances)**
+  - Hand-rolled HTTP parsing over raw sockets (Winsock)
+  - Trie-based URL router
+  - Thread pool for concurrent request handling
+  - PostgreSQL access via `libpqxx`, pooled connections
+  - Two-tier caching: per-record LRU cache + whole-table cache
+  - JSON responses via `nlohmann/json`
+  - REST endpoints for `/customers`, `/products`, `/orders` (GET / POST / PUT)
 
-- **One shared codebase** (`Server/`) containing all the actual logic.
-- **Three tiny folders** (`Server1/`, `Server2/`, `Server3/`) that each
-  contain a 15-line `main.cpp` picking a port and starting the shared
-  server.
+## Architecture
 
-If you ever need to fix a bug or add a feature, you now do it **once**
-in `Server/`, and all three servers get the fix — instead of editing
-three 72 KB files by hand.
+```
+                        ┌─────────────────┐
+        clients ──────► │   LoadBalancer   │  (port 7000)
+                        │ least-connections │
+                        └───────┬──────────┘
+                    ┌───────────┼───────────┐
+                    ▼           ▼           ▼
+              ┌─────────┐ ┌─────────┐ ┌─────────┐
+              │ Server1 │ │ Server2 │ │ Server3 │
+              │  :8080  │ │  :8000  │ │  :9000  │
+              └────┬────┘ └────┬────┘ └────┬────┘
+                   └────────────┼───────────┘
+                                ▼
+                          PostgreSQL
+                         (HttpServerDB)
+```
 
-## Folder layout
+Server1, Server2, and Server3 run the **exact same code** — they only differ
+by which port they listen on. That shared logic lives once in `Server/` and
+each server folder just wires up a `main()` with its own port.
+
+## Project structure
 
 ```
 HttpServerProject/
 ├── LoadBalancer/
 │   ├── include/
-│   │   ├── Common.h          # includes + constants (port, timeouts, buffer size...)
-│   │   ├── BackendServer.h   # struct describing one backend (host/port/health)
-│   │   └── LoadBalancer.h    # class declaration (all method signatures)
+│   │   ├── Common.h          # includes + tunables (port, timeouts, buffer size, worker count)
+│   │   ├── BackendServer.h   # struct describing one backend (host/port/health/active connections)
+│   │   └── LoadBalancer.h    # LoadBalancer class declaration
 │   ├── src/
 │   │   ├── LoadBalancer.cpp        # construction, logging, socket config, health checks
 │   │   ├── LoadBalancer_Relay.cpp  # TCP relay loop, per-client handling, worker threads
 │   │   └── LoadBalancer_Init.cpp   # winsock/bind/listen setup + main accept loop
 │   └── main/
-│       └── main.cpp          # int main() { LoadBalancer lb; lb.start(); }
+│       └── main.cpp          # entry point
 │
-├── Server/                    # <-- shared by all 3 backend servers
+├── Server/                    # shared by all 3 backend servers
 │   ├── include/
 │   │   ├── Common.h           # includes shared by every server file
-│   │   ├── Config.h           # DB_CONNECTION string
-│   │   ├── ConnectionPool.h   # PostgreSQL connection pool
+│   │   ├── Config.h           # PostgreSQL connection string
+│   │   ├── ConnectionPool.h   # pooled libpqxx connections
 │   │   ├── DataStore.h        # SQL access declarations (customers/products/orders)
-│   │   ├── LRUCache.h         # key -> value cache (used for GET ?id=)
-│   │   ├── TableCache.h       # whole-table cache (used for GET /customers etc.)
+│   │   ├── LRUCache.h         # per-record cache (GET ?id=)
+│   │   ├── TableCache.h       # whole-table cache (GET /customers, etc.)
 │   │   ├── TrieRouter.h       # trie-based URL router
 │   │   ├── ThreadPool.h       # task queue + worker thread pool
-│   │   ├── HTTPRequest.h      # simple {method, path, body} struct
+│   │   ├── HTTPRequest.h      # {method, path, body} struct
 │   │   └── HTTPServer.h       # HTTP server class declaration
 │   └── src/
-│       ├── DataStore_Customers.cpp   # SQL for /customers
-│       ├── DataStore_Products.cpp    # SQL for /products
-│       ├── DataStore_Orders.cpp      # SQL for /orders
+│       ├── DataStore_Customers.cpp
+│       ├── DataStore_Products.cpp
+│       ├── DataStore_Orders.cpp
 │       ├── HTTPServer.cpp            # construction, routing, send/receive, accept loop
-│       ├── HTTPServer_Customers.cpp  # GET/POST/PUT handling for /customers
-│       ├── HTTPServer_Products.cpp   # GET/POST/PUT handling for /products
-│       └── HTTPServer_Orders.cpp     # GET/POST/PUT handling for /orders
+│       ├── HTTPServer_Customers.cpp  # GET/POST/PUT for /customers
+│       ├── HTTPServer_Products.cpp   # GET/POST/PUT for /products
+│       └── HTTPServer_Orders.cpp     # GET/POST/PUT for /orders
 │
-├── Server1/
-│   └── main.cpp    # starts HTTPServer on port 8080
-├── Server2/
-│   └── main.cpp    # starts HTTPServer on port 8000
-└── Server3/
-    └── main.cpp    # starts HTTPServer on port 9000
+├── Server1/main.cpp    # starts HTTPServer on port 8080
+├── Server2/main.cpp    # starts HTTPServer on port 8000
+└── Server3/main.cpp    # starts HTTPServer on port 9000
 ```
 
-Every file is now well under 300 lines (most are 100–250), instead of one
-1,700–3,700 line file.
+## Requirements
 
-## How to build (Visual Studio / MSVC, Windows)
+- Windows + Visual Studio (MSVC) — the code uses `winsock2.h` / `ws2tcpip.h`
+- PostgreSQL (local instance is fine)
+- [vcpkg](https://github.com/microsoft/vcpkg) for dependencies:
+  - `libpqxx` — PostgreSQL C++ client
+  - `nlohmann-json` — JSON library
 
-You'll need the same dependencies your original code needed:
-- **libpqxx** (PostgreSQL C++ client) — for the servers only, not the load balancer
-- **nlohmann/json** — for the servers only
-- **ws2_32.lib** (winsock) — already linked via `#pragma comment` in the code
+The `LoadBalancer` target has **no third-party dependencies** (Winsock only).
 
-Recommended setup — create **4 separate projects** in one Visual Studio solution:
+## Setup
 
-1. **LoadBalancer** project
-   - Add all files under `LoadBalancer/include` and `LoadBalancer/src` and `LoadBalancer/main`
-   - Add `LoadBalancer/include` to "Additional Include Directories"
-   - No third-party dependencies needed (just Winsock)
+### 1. Install dependencies
 
-2. **Server1**, **Server2**, **Server3** projects
-   - Each one adds:
-     - all files under `Server/include` and `Server/src` (shared)
-     - its own single `main.cpp` (e.g. `Server1/main.cpp`)
-   - Add `Server/include` to "Additional Include Directories" for each project
-   - Link libpqxx + nlohmann/json (via vcpkg is easiest: `vcpkg install libpqxx nlohmann-json`)
+```powershell
+vcpkg install libpqxx nlohmann-json
+vcpkg integrate install
+```
 
-If you use vcpkg with manifest mode or a solution-wide vcpkg integration,
-all three server projects can share the same installed packages.
+### 2. Configure the database
 
-## What did NOT change
+Create a PostgreSQL database and update the connection string in
+[`Server/include/Config.h`](Server/include/Config.h):
 
-- Every function's logic, every SQL query, every socket call is byte-for-byte
-  the same code as your original files — just moved into a different file
-  and given a `ClassName::` prefix where it became an out-of-line definition.
-- Server1/2/3 still listen on 8080/8000/9000 respectively, matching what the
-  LoadBalancer already expects (see `LoadBalancer/include/LoadBalancer.h`
-  constructor, which points at `127.0.0.1:8080`, `:8000`, `:9000`).
+```cpp
+const string DB_CONNECTION =
+    "host=127.0.0.1 "
+    "port=5432 "
+    "dbname=HttpServerDB "
+    "user=postgres "
+    "password=YOUR_PASSWORD_HERE";
+```
+
+> ⚠️ Don't commit real credentials. See [Configuration](#configuration) below
+> for a safer approach using environment variables.
+
+Create the `customers`, `products`, and `orders` tables matching the schema
+used in `Server/src/DataStore_*.cpp`.
+
+### 3. Build
+
+Open the solution in Visual Studio with **4 projects**:
+
+| Project      | Sources                                                             | Include dirs                     | Dependencies              |
+|--------------|----------------------------------------------------------------------|-----------------------------------|----------------------------|
+| LoadBalancer | `LoadBalancer/include`, `LoadBalancer/src`, `LoadBalancer/main`      | `LoadBalancer/include`           | none                       |
+| Server1      | `Server/include`, `Server/src`, `Server1/main.cpp`                   | `Server/include`                 | libpqxx, nlohmann-json     |
+| Server2      | `Server/include`, `Server/src`, `Server2/main.cpp`                   | `Server/include`                 | libpqxx, nlohmann-json     |
+| Server3      | `Server/include`, `Server/src`, `Server3/main.cpp`                   | `Server/include`                 | libpqxx, nlohmann-json     |
+
+Build the solution (Release or Debug).
+
+### 4. Run
+
+Start the three backend servers first, then the load balancer:
+
+```powershell
+Server1.exe    # listens on :8080
+Server2.exe    # listens on :8000
+Server3.exe    # listens on :9000
+LoadBalancer.exe   # listens on :7000, routes to the servers above
+```
+
+### 5. Test
+
+Send requests through the load balancer (not directly to a server):
+
+```bash
+curl http://127.0.0.1:7000/customers
+curl http://127.0.0.1:7000/products?id=1
+curl -X POST http://127.0.0.1:7000/orders -d '{"customerId":1,"productId":2,"quantity":3}'
+```
+
+## Configuration
+
+| Setting              | Location                                  | Default        |
+|----------------------|--------------------------------------------|----------------|
+| Load balancer port   | `LoadBalancer/include/Common.h`            | `7000`         |
+| Backend ports        | `Server1/2/3/main.cpp`                     | `8080/8000/9000` |
+| Worker thread count  | `LoadBalancer/include/Common.h`            | `128`          |
+| DB connection string | `Server/include/Config.h`                  | see above      |
+
+### Avoiding hardcoded DB credentials
+
+`Config.h` currently hardcodes the database password. For anything beyond
+local testing, prefer reading it from an environment variable instead, e.g.:
+
+```cpp
+const string DB_CONNECTION =
+    "host=127.0.0.1 port=5432 dbname=HttpServerDB "
+    "user=postgres password=" + string(getenv("DB_PASSWORD"));
+```
+
+and add `Config.h` (or just the credentials) to `.gitignore` if you go this route.
+
+## License
+
+Add your preferred license here (MIT, Apache-2.0, etc.).
